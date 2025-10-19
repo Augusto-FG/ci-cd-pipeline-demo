@@ -101,7 +101,7 @@ jobs:
               with:
                 registry: ${{ env.REGISTRY }}
                 username: ${{ github.actor }}
-                password: ${{ secrets.GITHUB_TOKEN }}
+                password: ${{ secrets.TOKEN }}
 
             - name: extract metadata from docker
               id: meta
@@ -153,7 +153,7 @@ jobs:
             - name: checkout code
               uses: actions/checkout@v4
               with:
-                token: ${{ secrets.GITHUB_TOKEN}}
+                token: ${{ secrets.TOKEN }}
         
             - name: setup git config
               run: |
