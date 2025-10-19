@@ -1,5 +1,8 @@
 # Build stage
-FROM node:current-alpine3.22 AS build
+FROM node:25-alpine AS build
+RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories && \
+    apk update && \
+    apk upgrade pcre2
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
