@@ -1,12 +1,12 @@
 name: CI/CD pipeline
 
 on:
-    push:
-        branches: [ main ]
-        paths-ignore:
-            - 'kubernetes/deployment.yaml'
-    pull_request:
-        branches: [ main ]
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'kubernetes/deployment.yaml'
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
 
 jobs:
