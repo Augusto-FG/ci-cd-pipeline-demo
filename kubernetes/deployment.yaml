@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: app-demo
-        image: ghcr.io/rrrrho/ci-cd-pipeline-demo:sha-9f1f1f167993e7911878585cfdc87597d622fdc6
+        image: ghcr.io/rrrrho/ci-cd-pipeline-demo:sha-336a5f4dc8a87c3f474fb15d07742baf80d77499
         imagePullPolicy: Always
         ports:
         - containerPort: 80
