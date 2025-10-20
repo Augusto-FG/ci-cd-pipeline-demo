@@ -169,7 +169,7 @@ jobs:
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
@@ -177,7 +177,7 @@ jobs:
         env:
           IMAGE_TAG: sha-${{ github.sha }}
         run: |
-          IMAGE=ghcr.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:${IMAGE_TAG}
           echo "Saving image ${IMAGE} to image.tar.gz"
           docker save ${IMAGE} | gzip > image.tar.gz
           echo "Copying image to EC2"
