@@ -177,11 +177,19 @@ jobs:
         env:
           IMAGE_TAG: sha-${{ github.sha }}
         run: |
-          IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:${IMAGE_TAG}
+          # prefer job output, fallback to GITHUB_REPOSITORY lowercased
+          IMAGE_NAME='${{ needs.docker.outputs.image_name }}'
+          if [ -z "$IMAGE_NAME" ]; then
+            echo "needs.docker.outputs.image_name was empty; falling back to GITHUB_REPOSITORY"
+            IMAGE_NAME="${GITHUB_REPOSITORY,,}"
+          fi
+          IMAGE=ghcr.io/${IMAGE_NAME}:${IMAGE_TAG}
           echo "Saving image ${IMAGE} to image.tar.gz"
           docker save ${IMAGE} | gzip > image.tar.gz
-          echo "Copying image to EC2"
-          scp -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa image.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/image.tar.gz
+          echo "Testing SSH connectivity to EC2 (verbose)"
+          ssh -vvv -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'echo SSH_OK' || true
+          echo "Copying image to EC2 (scp -v)"
+          scp -v -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa image.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/image.tar.gz
 
       - name: Load and run image on EC2
         run: |
