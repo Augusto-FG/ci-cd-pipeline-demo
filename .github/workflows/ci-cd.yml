@@ -219,4 +219,3 @@ jobs:
           done
           echo "Smoke test failed: service did not return 200"
           exit 1
-name: CI/CD pipeline
