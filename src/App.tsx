@@ -13,6 +13,7 @@ function App() {
 
       <p className="subtitle-home">
         Equipo 10 - Ingenieria de Software
+        UADE
       </p>
     </>
   )
