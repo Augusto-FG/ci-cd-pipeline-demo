@@ -172,6 +172,21 @@ jobs:
           printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.TOKEN || github.token }}
+
+      - name: Pull image from GHCR
+        env:
+          IMAGE_TAG: sha-${{ github.sha }}
+        run: |
+          IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:${IMAGE_TAG}
+          echo "Pulling ${IMAGE}"
+          docker pull ${IMAGE}
 
       - name: Save image and transfer to EC2
         env:
