@@ -1,5 +1,9 @@
 name: CI/CD pipeline
 
+permissions:
+  contents: read
+  packages: write
+
 on:
   push:
     branches: [main]
@@ -102,7 +106,7 @@ jobs:
               with:
                 registry: ${{ env.REGISTRY }}
                 username: ${{ github.actor }}
-                password: ${{ secrets.TOKEN }}
+                password: ${{ secrets.TOKEN || github.token }}
 
             - name: extract metadata from docker
               id: meta
@@ -159,16 +163,32 @@ jobs:
                 chmod 600 ~/.ssh/id_rsa
                 ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-            - name: Deploy container on EC2
+            - name: Save image and transfer to EC2
               env:
                 IMAGE_TAG: sha-${{ github.sha }}
               run: |
-                ssh -o StrictHostKeyChecking=yes ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} <<EOF
+                IMAGE=ghcr.io/${{ github.repository }}:${IMAGE_TAG}
+                echo "Saving image ${IMAGE} to image.tar.gz"
+                docker save ${IMAGE} | gzip > image.tar.gz
+                echo "Copying image to EC2"
+                scp -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa image.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/image.tar.gz
+
+            - name: Load and run image on EC2
+              run: |
+                ssh -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} <<'EOF'
                 set -e
-                docker pull ghcr.io/${{ github.repository }}:${IMAGE_TAG}
+                if [ -f /tmp/image.tar.gz ]; then
+                  echo "Loading image"
+                  gunzip -c /tmp/image.tar.gz | docker load
+                  rm -f /tmp/image.tar.gz
+                else
+                  echo "No image file found on EC2"
+                  exit 1
+                fi
                 docker stop ci-cd-demo || true
                 docker rm ci-cd-demo || true
-                docker run -d --name ci-cd-demo -p 80:80 --restart=unless-stopped ghcr.io/${{ github.repository }}:${IMAGE_TAG}
+                # run the image by its full name (loaded image retains its name:tag)
+                docker run -d --name ci-cd-demo -p 80:80 --restart=unless-stopped ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
                 EOF
 
     smoke-test:
