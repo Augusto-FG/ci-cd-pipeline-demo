@@ -170,9 +170,17 @@ jobs:
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          # Write private key preserving newlines
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          # Add host key to known_hosts
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+          # Sanity check: ensure the file looks like a private key
+          if ! grep -q -E 'BEGIN .*PRIVATE KEY' ~/.ssh/id_rsa; then
+            echo "ERROR: SSH private key file does not look valid. Please check the secret EC2_SSH_KEY." >&2
+            ls -l ~/.ssh
+            exit 1
+          fi
 
       - name: Pull image from GHCR
         env:
@@ -186,17 +194,23 @@ jobs:
         env:
           IMAGE_TAG: sha-${{ github.sha }}
         run: |
+          # Resolve EC2 user with fallback to ec2-user
+          EC2_USER="${{ secrets.EC2_USER }}"
+          if [ -z "$EC2_USER" ]; then EC2_USER=ec2-user; fi
           IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:${IMAGE_TAG}
           echo "Saving image ${IMAGE} to image.tar.gz"
           docker save ${IMAGE} | gzip > image.tar.gz
           echo "Testing SSH connectivity to EC2"
-          ssh -vvv -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'echo SSH_OK' || true
+          ssh -vvv -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${EC2_USER}@${{ secrets.EC2_HOST }} 'echo SSH_OK' || true
           echo "Copying image to EC2"
-          scp -v -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa image.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/image.tar.gz
+          scp -v -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa image.tar.gz ${EC2_USER}@${{ secrets.EC2_HOST }}:/tmp/image.tar.gz
 
       - name: Load and run image on EC2
         run: |
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} <<'EOF'
+          EC2_USER="${{ secrets.EC2_USER }}"
+          if [ -z "$EC2_USER" ]; then EC2_USER=ec2-user; fi
+          REMOTE_IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:sha-${{ github.sha }}
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${EC2_USER}@${{ secrets.EC2_HOST }} <<EOF
             set -e
             if [ -f /tmp/image.tar.gz ]; then
               echo "Loading image"
@@ -208,7 +222,7 @@ jobs:
             fi
             docker stop ci-cd-demo || true
             docker rm ci-cd-demo || true
-            docker run -d --name ci-cd-demo -p 80:80 --restart=unless-stopped ghcr.io/${{ needs.docker.outputs.image_name }}:sha-${{ github.sha }}
+            docker run -d --name ci-cd-demo -p 80:80 --restart=unless-stopped ${REMOTE_IMAGE}
           EOF
 
   smoke-test:
