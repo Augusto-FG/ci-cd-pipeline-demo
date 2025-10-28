@@ -1,253 +1,72 @@
-name: CI/CD pipeline
+name: CI/CD React App
 
 on:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - kubernetes/deployment.yaml
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
-  workflow_dispatch: {}
-
-permissions:
-  contents: read
-  packages: write
+    branches: [ main ]
 
 jobs:
-  test:
-    name: Unit Testing
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '25'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm test || echo 'No tests for now!'
-
-  lint:
-    name: Static Code Analysis
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '25'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run ESLint
-        run: npm run lint
-
   build:
-    name: Build Project
     runs-on: ubuntu-latest
-    needs: [test, lint]
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
-          cache: 'npm'
+          node-version: '20'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      - name: Build project
+      - name: Run tests with coverage (fail if <80%)
+        run: |
+          npx jest --coverage --watchAll=false --coverageThreshold='{
+            "global": {
+              "branches": 80,
+              "functions": 80,
+              "lines": 80,
+              "statements": 80
+            }
+          }'
+
+      - name: Build
         run: npm run build
 
-      - name: Upload build artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
+          name: build
           path: dist/
 
-  docker:
-    name: Docker Build and Push
+  deploy:
+    needs: build
     runs-on: ubuntu-latest
-    needs: [build]
-    env:
-      REGISTRY: ghcr.io
-    outputs:
-      image_tag: ${{ steps.set_output.outputs.image_tag }}
-      image_name: ${{ steps.set_image_name.outputs.image_name }}
+    environment: production
+    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set image name lowercase
-        id: set_image_env
-        run: |
-          IMAGE_NAME=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
-          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
-
-      - name: Download build artifacts
+      - name: Descargar artifact del build
         uses: actions/download-artifact@v4
         with:
-          name: build-artifacts
-          path: dist/
+          name: build
+          path: dist
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.TOKEN || github.token }}
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v3
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,format=long
-            type=ref,event=branch
-            latest
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          load: true
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          format: 'table'
-          exit-code: 1
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          trivyignores: '.trivyignore'
-
-      - name: Push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Set image tag output
-        id: set_output
-        run: echo "image_tag=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
-
-      - name: Set image name output
-        id: set_image_name
-        run: echo "image_name=${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
-
-  deploy-ec2:
-    name: Deploy to EC2 via SSH
-    runs-on: ubuntu-latest
-    needs: [docker]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Set up SSH key
+      - name: Configurar SSH
         run: |
+          set -e
           mkdir -p ~/.ssh
-          # Write private key preserving newlines
-          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Add host key to known_hosts
+          echo "EC2_HOST=${{ secrets.EC2_HOST }}"
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
-          # Sanity check: ensure the file looks like a private key
-          if ! grep -q -E 'BEGIN .*PRIVATE KEY' ~/.ssh/id_rsa; then
-            echo "ERROR: SSH private key file does not look valid. Please check the secret EC2_SSH_KEY." >&2
-            ls -l ~/.ssh
-            exit 1
-          fi
-          # Derive public key from private and print fingerprint for debugging (safe to show)
-          echo "--- Derived public key fingerprint (from secret) ---"
-          ssh-keygen -y -f ~/.ssh/id_rsa > ~/.ssh/id_rsa.pub
-          ssh-keygen -lf ~/.ssh/id_rsa.pub || true
-          echo "--- Derived public key (first 200 chars) ---"
-          head -c 200 ~/.ssh/id_rsa.pub || true
-          echo
 
-      - name: Pull image from GHCR
-        env:
-          IMAGE_TAG: sha-${{ github.sha }}
+      - name: Copiar archivos al servidor
         run: |
-          IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:${IMAGE_TAG}
-          echo "Pulling ${IMAGE}"
-          docker pull ${IMAGE}
+          rsync -avz --delete dist/ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.REMOTE_PATH }} --rsync-path="sudo rsync"
 
-      - name: Save image and transfer to EC2
-        env:
-          IMAGE_TAG: sha-${{ github.sha }}
-        run: |
-          # Resolve EC2 user with fallback to ec2-user
-          EC2_USER="${{ secrets.EC2_USER }}"
-          if [ -z "$EC2_USER" ]; then EC2_USER=ec2-user; fi
-          IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:${IMAGE_TAG}
-          echo "Saving image ${IMAGE} to image.tar.gz"
-          docker save ${IMAGE} | gzip > image.tar.gz
-          echo "Testing SSH connectivity to EC2"
-          ssh -vvv -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${EC2_USER}@${{ secrets.EC2_HOST }} 'echo SSH_OK' || true
-          echo "Copying image to EC2"
-          scp -v -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa image.tar.gz ${EC2_USER}@${{ secrets.EC2_HOST }}:/tmp/image.tar.gz
 
-      - name: Load and run image on EC2
+      - name: Reiniciar nginx
         run: |
-          EC2_USER="${{ secrets.EC2_USER }}"
-          if [ -z "$EC2_USER" ]; then EC2_USER=ec2-user; fi
-          REMOTE_IMAGE=ghcr.io/${{ needs.docker.outputs.image_name }}:sha-${{ github.sha }}
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${EC2_USER}@${{ secrets.EC2_HOST }} <<EOF
-            set -e
-            if [ -f /tmp/image.tar.gz ]; then
-              echo "Loading image"
-              gunzip -c /tmp/image.tar.gz | docker load
-              rm -f /tmp/image.tar.gz
-            else
-              echo "No image file found on EC2"
-              exit 1
-            fi
-            docker stop ci-cd-demo || true
-            docker rm ci-cd-demo || true
-            docker run -d --name ci-cd-demo -p 80:80 --restart=unless-stopped ${REMOTE_IMAGE}
-          EOF
-
-  smoke-test:
-    name: Smoke Test
-    runs-on: ubuntu-latest
-    needs: [deploy-ec2]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Wait for app and check HTTP 200
-        run: |
-          for i in {1..20}; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.EC2_HOST }}:80 || echo "000")
-            echo "Attempt $i -> status $status"
-            if [ "$status" = "200" ]; then
-              echo "Service is healthy"
-              exit 0
-            fi
-            sleep 3
-          done
-          echo "Smoke test failed: service did not return 200"
-          exit 1
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo systemctl restart nginx"
