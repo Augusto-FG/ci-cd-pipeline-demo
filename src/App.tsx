@@ -9,11 +9,10 @@ function App() {
           <img src={perro} className="logo" alt="React logo" />
         </a>
       </div>
-      <h1>CD / CI</h1>
+      <h1>CI / CD</h1>
 
       <p className="subtitle-home">
         Equipo 10 - Ingenieria de Software
-        Universidad argentina Ejemplo de pipeline CI CD
       </p>
     </>
   )
