@@ -58,23 +58,24 @@ jobs:
           name: build
           path: dist
 
-      - name: 🔐 Configure SSH access
+      - name: 🔐 Configure SSH
         env:
-          SSH_PRIVATE_KEY_B64: ${{ secrets.SSH_PRIVATE_KEY_B64 }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           
-          # Decode private key (stored as base64 in GitHub Secrets)
-          printf '%s' "$SSH_PRIVATE_KEY_B64" | base64 --decode > ~/.ssh/id_rsa
+          # Guardar la clave privada correctamente
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Add host to known_hosts
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
-          
-          # Start agent and load key
+          # Iniciar agente y cargar la clave
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/id_rsa
+          
+          # Confiar en el host remoto
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
       - name: 📦 Upload build files to EC2
         run: |
