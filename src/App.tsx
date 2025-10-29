@@ -13,7 +13,7 @@ function App() {
 
       <p className="subtitle-home">
         Equipo 10 - Ingenieria de Software
-        Universidad argentina en BS AS
+        Universidad argentina Ejemplo de pipeline CI CD
       </p>
     </>
   )
