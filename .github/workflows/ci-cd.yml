@@ -58,24 +58,13 @@ jobs:
           name: build
           path: dist
 
-      - name: 🔐 Configure SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          
-          # Guardar la clave privada correctamente
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          
-          # Iniciar agente y cargar la clave
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/id_rsa
-          
-          # Confiar en el host remoto
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+      - name: 🔐 Configure SSH Key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: 🔑 Add EC2 Host to known_hosts
+        run: ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
       - name: 📦 Upload build files to EC2
         run: |
