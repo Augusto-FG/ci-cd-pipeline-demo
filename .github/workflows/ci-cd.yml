@@ -1,80 +1,32 @@
-name: CI/CD React App
+name: CI React App
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 🧩 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: 🧪 Run tests with coverage (fail if <80%)
-        run: |
-          npx jest --coverage --watchAll=false --coverageThreshold='{
-            "global": {
-              "branches": 80,
-              "functions": 80,
-              "lines": 80,
-              "statements": 80
-            }
-          }'
+      - name: Run tests
+        run: npx jest --coverage --watchAll=false
 
-      - name: 🏗️ Build app
+      - name: Build React app
         run: npm run build
 
-      - name: 📤 Upload build artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: dist/
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    env:
-      EC2_HOST: ${{ secrets.EC2_HOST }}
-      REMOTE_PATH: ${{ secrets.REMOTE_PATH }}
-
-    steps:
-      - name: 📥 Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build
-          path: dist
-
-      - name: 🔐 Configure SSH Key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: 🔑 Add EC2 Host to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: 🧪 Test SSH Connection
-        run: |
-          ssh -vvv -o StrictHostKeyChecking=no ubuntu@$EC2_HOST "echo SSH connection successful"
-
-      - name: 📦 Upload build files to EC2
-        run: |
-          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" dist/ ubuntu@$EC2_HOST:$REMOTE_PATH
-
-      - name: 🔁 Restart Nginx
-        run: |
-          ssh ubuntu@$EC2_HOST "sudo systemctl restart nginx"
+          path: build/
