@@ -13,7 +13,7 @@ function App() {
 
       <p className="subtitle-home">
         Equipo 10 - Ingenieria de Software
-        Bienvenidos a Mercado Libro
+        Bienvenidos a Mercado Libro.
       </p>
     </>
   )
