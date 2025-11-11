@@ -5,7 +5,7 @@ describe('App component', () => {
   test('renders heading and image', () => {
     render(<App />)
     // check heading
-    const heading = screen.getByText(/CD \/ CI/i)
+    const heading = screen.getByText(/CI \/ CD/i)
     expect(heading).toBeTruthy()
 
     // check image by alt text
