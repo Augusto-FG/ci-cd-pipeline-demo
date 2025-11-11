@@ -12,8 +12,7 @@ function App() {
       <h1>CI / CD</h1>
 
       <p className="subtitle-home">
-        Equipo 10 - Ingenieria de Software
-        Bienvenidos a Mercado Libro.
+        Equipo 10 - Ingenieria de Software <br /> Bienvenidos a Mercado Libro.
       </p>
     </>
   )
